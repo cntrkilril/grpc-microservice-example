@@ -1,0 +1,21 @@
+linters:
+  fast: true
+  enable:
+    - decorder
+    - errchkjson
+    - errname
+    - goconst
+    - errcheck
+    - typecheck
+    - unused
+    - gocritic
+    - forbidigo
+    - revive
+run:
+  concurrency: 4
+  issues-exit-code: 2
+  tests: false
+  skip-dirs-use-default: false
+  modules-download-mode: readonly
+  allow-parallel-runners: false
+  go: '1.20'

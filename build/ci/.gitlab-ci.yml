@@ -1,0 +1,66 @@
+stages:
+  - test
+  - lint
+  - build
+  - deploy
+
+test:
+  stage: test
+  tags:
+    - dev
+  image: golang:1.20.3-alpine3.17
+  script:
+    - apk update --no-cache && apk add --no-cache tzdata git coreutils
+    - >
+      go env GOPRIVATE="gitlab.com/d1zero-online-booking/*" && echo "machine gitlab.com" >> ~/.netrc &&
+      echo "login $GITUSERNAME" >> ~/.netrc && echo "password $GITPASSWORD" >>  ~/.netrc
+    - go test -v ./...
+
+lint:
+  stage: lint
+  needs:
+    - test
+  tags:
+    - dev
+  image: golangci/golangci-lint:v1.52.2-alpine
+  script:
+    - golangci-lint run --config=./.golangci.yml --timeout=3m
+
+
+build:
+  stage: build
+  only:
+    - main
+  needs:
+    - lint
+  image: docker:20.10-dind
+  tags:
+    - dev
+  script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - >
+      docker build
+      --build-arg GITPASSWORD=$GITPASSWORD --build-arg GITUSERNAME=$GITUSERNAME 
+      -f build/Dockerfile -t registry.gitlab.com/d1zero-online-booking/backend/appointment-service
+      .
+    - docker push registry.gitlab.com/d1zero-online-booking/backend/appointment-service
+
+deploy:
+  stage: deploy
+  only:
+    - main
+  when: manual
+  needs:
+    - build
+  image: docker:20.10-dind
+  tags:
+    - dev
+  before_script:
+    - eval $(ssh-agent -s)
+    - echo "$SSH_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+  script:
+    - 'ssh root@$SERVER -o StrictHostKeyChecking=no -p $PORT "docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY &&
+      docker service update --force --image registry.gitlab.com/d1zero-online-booking/backend/appointment-service appointment-service_app" &&
+      docker system prune --volumes --all --force'
